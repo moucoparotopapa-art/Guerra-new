@@ -1,0 +1,361 @@
+-- ========================================================
+-- TRENCH WARFARE - SCRIPT DEFINITIVO (V7 - FLY DE JOYSTICK)
+-- ========================================================
+
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+local RunService = game:GetService("RunService")
+
+local Window = Rayfield:CreateWindow({
+   Name = "Trench Warfare - Mod Menu",
+   LoadingTitle = "Carregando Script...",
+   LoadingSubtitle = "por Voce",
+   ConfigurationSaving = { Enabled = false },
+   KeySystem = false
+})
+
+local TabCombat = Window:CreateTab("Combate", 4483362458)
+local TabVisual = Window:CreateTab("Visual", 4483362458)
+local TabPlayer = Window:CreateTab("Jogador", 4483362458)
+
+-- ========================================================
+-- VARIÁVEIS
+-- ========================================================
+local AimbotEnabled = false
+local MaxDistance = 300
+local CurrentTarget = nil
+local ESPEnabled = false
+local EnemyHitboxEnabled = false
+local EnemyHitboxSize = 5
+local originalEnemyHitboxes = {}
+local SelfHitboxEnabled = false
+local SelfHitboxSize = 1
+local originalSelfHitbox = nil
+local SpeedEnabled = false
+local SpeedValue = 25
+local FlyEnabled = false
+local FlySpeed = 50
+
+-- ========================================================
+-- ABA COMBATE
+-- ========================================================
+TabCombat:CreateToggle({
+   Name = "Ativar Aimbot Hardcore (Trava Total)",
+   CurrentValue = false,
+   Callback = function(v) 
+       AimbotEnabled = v 
+       if not v then CurrentTarget = nil end
+   end,
+})
+
+TabCombat:CreateSlider({
+   Name = "Distância Máxima de Busca",
+   Range = {50, 500},
+   Increment = 10,
+   CurrentValue = 300,
+   Callback = function(v) MaxDistance = v end,
+})
+
+-- ========================================================
+-- ABA VISUAL (ESP E HITBOX INIMIGO)
+-- ========================================================
+TabVisual:CreateToggle({
+   Name = "Ativar ESP (Ver Inimigos)",
+   CurrentValue = false,
+   Callback = function(v) ESPEnabled = v end,
+})
+
+TabVisual:CreateToggle({
+   Name = "Aumentar Hitbox dos Inimigos",
+   CurrentValue = false,
+   Callback = function(v) 
+       EnemyHitboxEnabled = v 
+       if not v then
+           for name, size in pairs(originalEnemyHitboxes) do
+               local p = game.Players:FindFirstChild(name)
+               if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                   pcall(function()
+                       p.Character.HumanoidRootPart.Size = size
+                       p.Character.HumanoidRootPart.Transparency = 1
+                   end)
+               end
+           end
+           originalEnemyHitboxes = {}
+       end
+   end,
+})
+
+TabVisual:CreateSlider({
+   Name = "Tamanho da Hitbox Inimiga",
+   Range = {3, 15},
+   Increment = 1,
+   CurrentValue = 5,
+   Callback = function(v) EnemyHitboxSize = v end,
+})
+
+-- ========================================================
+-- ABA JOGADOR (SPEED, FLY E HITBOX PRÓPRIA)
+-- ========================================================
+TabPlayer:CreateToggle({
+   Name = "Ativar Speed Hack",
+   CurrentValue = false,
+   Callback = function(v) SpeedEnabled = v end,
+})
+
+TabPlayer:CreateSlider({
+   Name = "Velocidade",
+   Range = {16, 60},
+   Increment = 1,
+   CurrentValue = 25,
+   Callback = function(v) SpeedValue = v end,
+})
+
+TabPlayer:CreateToggle({
+   Name = "Ativar Fly (Joystick para Mover)",
+   CurrentValue = false,
+   Callback = function(v) 
+       FlyEnabled = v 
+       local char = game.Players.LocalPlayer.Character
+       if not v and char and char:FindFirstChild("HumanoidRootPart") then
+           local flyVel = char.HumanoidRootPart:FindFirstChild("FlyVelocity")
+           if flyVel then flyVel:Destroy() end
+           local humanoid = char:FindFirstChildOfClass("Humanoid")
+           if humanoid then humanoid.PlatformStand = false end
+       end
+   end,
+})
+
+TabPlayer:CreateSlider({
+   Name = "Velocidade do Fly",
+   Range = {10, 150},
+   Increment = 5,
+   CurrentValue = 50,
+   Callback = function(v) FlySpeed = v end,
+})
+
+TabPlayer:CreateToggle({
+   Name = "Diminuir a Minha Hitbox",
+   CurrentValue = false,
+   Callback = function(v) 
+       SelfHitboxEnabled = v 
+       if not v then
+           local char = game.Players.LocalPlayer.Character
+           if char and char:FindFirstChild("HumanoidRootPart") and originalSelfHitbox then
+               char.HumanoidRootPart.Size = originalSelfHitbox
+               originalSelfHitbox = nil
+           end
+       end
+   end,
+})
+
+TabPlayer:CreateSlider({
+   Name = "Tamanho da Minha Hitbox",
+   Range = {0.5, 2},
+   Increment = 0.5,
+   CurrentValue = 1,
+   Callback = function(v) SelfHitboxSize = v end,
+})
+
+-- ========================================================
+-- FUNÇÕES AUXILIARES
+-- ========================================================
+local function IsEnemy(player)
+    local localPlayer = game.Players.LocalPlayer
+    if player == localPlayer then return false end
+    if player.Team == localPlayer.Team then return false end
+    return true
+end
+
+local function IsVisible(target)
+    local success, result = pcall(function()
+        local camera = workspace.CurrentCamera
+        local origin = camera.CFrame.Position
+        local destination = target.Position
+        local ray = Ray.new(origin, (destination - origin))
+        local ignoreList = {game.Players.LocalPlayer.Character, target.Parent}
+        if target.Parent then
+            for _, v in pairs(target.Parent:GetChildren()) do table.insert(ignoreList, v) end
+        end
+        local hit = workspace:FindPartOnRayWithIgnoreList(ray, ignoreList)
+        return hit == nil
+    end)
+    return success and result
+end
+
+local function GetDistance(target)
+    local localPlayer = game.Players.LocalPlayer
+    if localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        return (localPlayer.Character.HumanoidRootPart.Position - target.Position).Magnitude
+    end
+    return math.huge
+end
+
+-- ========================================================
+-- LÓGICA DE SELEÇÃO DE ALVO (AIMBOT)
+-- ========================================================
+task.spawn(function()
+    while task.wait(0.1) do
+        pcall(function()
+            if not AimbotEnabled then return end
+            local bestTarget = nil
+            local shortestDistance = MaxDistance
+            
+            if CurrentTarget then
+                local targetPlayer = game.Players:GetPlayerFromCharacter(CurrentTarget.Parent)
+                if targetPlayer and IsEnemy(targetPlayer) and CurrentTarget.Parent:FindFirstChild("Humanoid") and CurrentTarget.Parent.Humanoid.Health > 0 then
+                    if IsVisible(CurrentTarget) then
+                        bestTarget = CurrentTarget
+                        shortestDistance = GetDistance(CurrentTarget)
+                    end
+                end
+            end
+
+            for _, player in pairs(game.Players:GetPlayers()) do
+                pcall(function()
+                    if IsEnemy(player) and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+                        local distance = GetDistance(player.Character.HumanoidRootPart)
+                        if distance < shortestDistance and IsVisible(player.Character.HumanoidRootPart) then
+                            shortestDistance = distance
+                            bestTarget = player.Character.HumanoidRootPart
+                        end
+                    end
+                end)
+            end
+            CurrentTarget = bestTarget
+        end)
+    end
+end)
+
+-- ========================================================
+-- LOCK-ON HARDCORE (AIMBOT)
+-- ========================================================
+RunService.RenderStepped:Connect(function()
+    if AimbotEnabled and CurrentTarget and CurrentTarget.Parent then
+        local camera = workspace.CurrentCamera
+        local targetPos = CurrentTarget.Position
+        if CurrentTarget.Parent:FindFirstChild("Head") then
+            targetPos = CurrentTarget.Parent.Head.Position
+        end
+        camera.CFrame = CFrame.new(camera.CFrame.Position, targetPos)
+    end
+end)
+
+-- ========================================================
+-- LOOP PRINCIPAL (SPEED, HITBOX, ESP E FLY)
+-- ========================================================
+task.spawn(function()
+    while task.wait(0.1) do
+        pcall(function()
+            local player = game.Players.LocalPlayer
+            local character = player.Character
+            
+            if character and character:FindFirstChild("HumanoidRootPart") then
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+                local root = character.HumanoidRootPart
+                
+                -- SPEED
+                if SpeedEnabled and humanoid then
+                    humanoid.WalkSpeed = SpeedValue
+                elseif humanoid and humanoid.WalkSpeed ~= 16 then
+                    humanoid.WalkSpeed = 16
+                end
+                
+                -- FLY (MODO JOYSTICK + CÂMERA)
+                if FlyEnabled and humanoid then
+                    humanoid.PlatformStand = true -- Desliga a gravidade
+                    
+                    local flyVel = root:FindFirstChild("FlyVelocity")
+                    if not flyVel then
+                        flyVel = Instance.new("BodyVelocity")
+                        flyVel.Name = "FlyVelocity"
+                        flyVel.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+                        flyVel.Parent = root
+                    end
+                    
+                    -- 1. Pega a direção do JOYSTICK (movimento horizontal)
+                    local moveDir = humanoid.MoveDirection 
+                    
+                    -- 2. Pega a direção VERTICAL da câmera (olhar pra cima/baixo)
+                    local lookDir = workspace.CurrentCamera.CFrame.LookVector
+                    local verticalMove = 0
+                    if lookDir.Y > 0.5 then verticalMove = 1 end
+                    if lookDir.Y < -0.5 then verticalMove = -1 end
+                    
+                    -- 3. Aplica a velocidade: Joystick (horizontal) + Câmera (vertical)
+                    flyVel.Velocity = (moveDir * FlySpeed) + Vector3.new(0, verticalMove * FlySpeed, 0)
+                else
+                    if humanoid then humanoid.PlatformStand = false end
+                    local flyVel = root:FindFirstChild("FlyVelocity")
+                    if flyVel then flyVel:Destroy() end
+                end
+                
+                -- MINHA HITBOX
+                if SelfHitboxEnabled then
+                    if not originalSelfHitbox then originalSelfHitbox = root.Size end
+                    root.Size = Vector3.new(SelfHitboxSize, SelfHitboxSize, SelfHitboxSize)
+                    root.Transparency = 0.5
+                else
+                    if originalSelfHitbox then
+                        root.Size = originalSelfHitbox
+                        root.Transparency = 1
+                        originalSelfHitbox = nil
+                    end
+                end
+
+                -- HITBOX INIMIGO
+                for _, p in pairs(game.Players:GetPlayers()) do
+                    pcall(function()
+                        if IsEnemy(p) and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                            local hrp = p.Character.HumanoidRootPart
+                            if EnemyHitboxEnabled then
+                                if not originalEnemyHitboxes[p.Name] then originalEnemyHitboxes[p.Name] = hrp.Size end
+                                hrp.Size = Vector3.new(EnemyHitboxSize, EnemyHitboxSize, EnemyHitboxSize)
+                                hrp.Transparency = 0.5
+                            else
+                                if originalEnemyHitboxes[p.Name] then
+                                    hrp.Size = originalEnemyHitboxes[p.Name]
+                                    hrp.Transparency = 1
+                                    originalEnemyHitboxes[p.Name] = nil
+                                end
+                            end
+                        end
+                    end)
+                end
+                
+                -- ESP
+                local espFolder = workspace:FindFirstChild("TW_ESP_Folder")
+                if not espFolder then
+                    espFolder = Instance.new("Folder")
+                    espFolder.Name = "TW_ESP_Folder"
+                    espFolder.Parent = workspace
+                end
+
+                if ESPEnabled then
+                    for _, p in pairs(game.Players:GetPlayers()) do
+                        pcall(function()
+                            if IsEnemy(p) and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                                local aura = espFolder:FindFirstChild(p.Name)
+                                if not aura then
+                                    aura = Instance.new("Highlight")
+                                    aura.Name = p.Name
+                                    aura.FillColor = Color3.fromRGB(255, 0, 0)
+                                    aura.OutlineColor = Color3.fromRGB(255, 255, 255)
+                                    aura.FillTransparency = 0.5
+                                    aura.OutlineTransparency = 0
+                                    aura.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                                    aura.Parent = espFolder
+                                end
+                                if aura.Adornee ~= p.Character then aura.Adornee = p.Character end
+                            end
+                        end)
+                    end
+                else
+                    if espFolder then
+                        for _, v in pairs(espFolder:GetChildren()) do
+                            v:Destroy()
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
