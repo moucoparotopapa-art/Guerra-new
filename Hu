@@ -1,0 +1,194 @@
+-- ========================================================
+-- VURDZ HUB - BLOX FRUITS (V1)
+-- ========================================================
+
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+-- ========================================================
+-- CONFIGURAÇÕES INICIAIS
+-- ========================================================
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- Detecta o mar (Sea 1, 2 ou 3) pelo ID do lugar
+local SeaID = game.PlaceId
+local SeaName = "Desconhecido"
+if SeaID == 2753915549 then SeaName = "Sea 1"
+elseif SeaID == 4442272183 then SeaName = "Sea 2"
+elseif SeaID == 7449423635 then SeaName = "Sea 3" end
+
+-- ========================================================
+-- INTERFACE (RAYFIELD UI) - VURDZ HUB
+-- ========================================================
+local Window = Rayfield:CreateWindow({
+    Name = "Vurdz Hub - Blox Fruits", -- Nome do seu Hub aqui!
+    LoadingTitle = "Carregando Vurdz Hub...",
+    LoadingSubtitle = "por Voce (" .. SeaName .. ")",
+    ConfigurationSaving = { Enabled = true, FolderName = "VurdzHubBF", FileName = "Config" },
+    KeySystem = false
+})
+
+local TabFarm = Window:CreateTab("Farm", 4483362458)
+local TabCombat = Window:CreateTab("Combate", 4483362458)
+local TabFruit = Window:CreateTab("Frutas", 4483362458)
+local TabPlayer = Window:CreateTab("Jogador", 4483362458)
+
+-- ========================================================
+-- VARIÁVEIS DE CONTROLE
+-- ========================================================
+local AutoFarmEnabled = false
+local AutoQuestEnabled = false
+local FruitSniperEnabled = false
+local AutoRaidEnabled = false
+local ESPEnabled = false
+local WalkSpeedEnabled = false
+local WalkSpeedValue = 50
+local AutoCollectChests = false
+
+-- ========================================================
+-- FUNÇÕES DE FARM
+-- ========================================================
+local function getEquippedTool()
+    local char = LocalPlayer.Character
+    if char then
+        for _, tool in pairs(char:GetChildren()) do
+            if tool:IsA("Tool") then return tool end
+        end
+    end
+    return nil
+end
+
+local function attackNearestMob()
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    local root = char.HumanoidRootPart
+    local tool = getEquippedTool()
+    if not tool then return end
+
+    local closestMob = nil
+    local shortestDist = 9999
+
+    for _, mob in pairs(workspace:GetChildren()) do
+        if mob:FindFirstChild("Humanoid") and mob:FindFirstChild("HumanoidRootPart") and mob.Humanoid.Health > 0 then
+            local dist = (root.Position - mob.HumanoidRootPart.Position).Magnitude
+            if dist < shortestDist then
+                shortestDist = dist
+                closestMob = mob
+            end
+        end
+    end
+
+    if closestMob then
+        root.CFrame = closestMob.HumanoidRootPart.CFrame * CFrame.new(0, 0, 2)
+        tool:Activate()
+    end
+end
+
+-- ========================================================
+-- LOOP PRINCIPAL
+-- ========================================================
+task.spawn(function()
+    while task.wait(0.5) do
+        pcall(function()
+            local char = LocalPlayer.Character
+            if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+            local root = char.HumanoidRootPart
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+
+            -- SPEED HACK
+            if WalkSpeedEnabled and humanoid then
+                humanoid.WalkSpeed = WalkSpeedValue
+            elseif humanoid and humanoid.WalkSpeed ~= 16 then
+                humanoid.WalkSpeed = 16
+            end
+
+            -- AUTO FARM
+            if AutoFarmEnabled then
+                attackNearestMob()
+            end
+
+            -- ESP
+            if ESPEnabled then
+                for _, mob in pairs(workspace:GetChildren()) do
+                    if mob:FindFirstChild("Humanoid") and mob:FindFirstChild("HumanoidRootPart") and mob.Humanoid.Health > 0 then
+                        if not mob:FindFirstChild("VurdzESP") then
+                            local h = Instance.new("Highlight")
+                            h.Name = "VurdzESP"
+                            h.FillColor = Color3.fromRGB(255, 0, 0)
+                            h.OutlineColor = Color3.new(1, 1, 1)
+                            h.Parent = mob
+                        end
+                    end
+                end
+            else
+                for _, mob in pairs(workspace:GetChildren()) do
+                    if mob:FindFirstChild("VurdzESP") then
+                        mob.VurdzESP:Destroy()
+                    end
+                end
+            end
+
+            -- FRUIT SNIPER
+            if FruitSniperEnabled then
+                for _, obj in pairs(workspace:GetChildren()) do
+                    if obj.Name:find("Fruit") and obj:FindFirstChild("Handle") then
+                        root.CFrame = obj.Handle.CFrame * CFrame.new(0, 5, 0)
+                        task.wait(0.1)
+                        firetouchinterest(root, obj.Handle, 0)
+                        firetouchinterest(root, obj.Handle, 1)
+                    end
+                end
+            end
+        end)
+    end
+end)
+
+-- ========================================================
+-- BOTÕES DA INTERFACE
+-- ========================================================
+TabFarm:CreateToggle({
+    Name = "Auto Farm (Nível)",
+    CurrentValue = false,
+    Callback = function(v) AutoFarmEnabled = v end
+})
+
+TabFarm:CreateToggle({
+    Name = "Auto Quest",
+    CurrentValue = false,
+    Callback = function(v) AutoQuestEnabled = v end
+})
+
+TabFarm:CreateToggle({
+    Name = "Auto Coletar Baús",
+    CurrentValue = false,
+    Callback = function(v) AutoCollectChests = v end
+})
+
+TabFruit:CreateToggle({
+    Name = "Fruit Sniper (Coletar Frutas)",
+    CurrentValue = false,
+    Callback = function(v) FruitSniperEnabled = v end
+})
+
+TabCombat:CreateToggle({
+    Name = "ESP (Ver Inimigos)",
+    CurrentValue = false,
+    Callback = function(v) ESPEnabled = v end
+})
+
+TabPlayer:CreateToggle({
+    Name = "Speed Hack",
+    CurrentValue = false,
+    Callback = function(v) WalkSpeedEnabled = v end
+})
+
+TabPlayer:CreateSlider({
+    Name = "Velocidade",
+    Range = {16, 100},
+    Increment = 1,
+    Suffix = " speed",
+    CurrentValue = 50,
+    Callback = function(v) WalkSpeedValue = v end
+})
